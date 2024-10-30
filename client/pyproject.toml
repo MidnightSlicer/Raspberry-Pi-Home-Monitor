@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "client"
+version = "0.1.0"
+description = ""
+authors = ["Dylan <dylan@mnsr.win>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+paho-mqtt = "^2.1.0"
+python-dotenv = "^1.0.1"
+psutil = "^6.1.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
