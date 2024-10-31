@@ -21,19 +21,32 @@ def get_config():
         ]
         return configs
     except Exception as err:
-        print(f"Something went wrong with your .env file.\n{err}")
+        print(f"Something went wrong with your environment. Please make sure you have every environment variable set properly.\n{err}")
         return None
 
 def create_json_string():
+    '''
+    json structure should be modified here to fit your needs, and then updated in the server.
+    I recommend putting yours below for easy reference in the future.
+
+    {
+      "timestamp": #current timestamp,
+      "cpu_temp": #cpu temp in C,
+      "fridge_1": #fridge temp in C,
+      "freezer_1": #freezer temp in C,
+      "freezer_2": #freezer temp in C,
+    }
+    '''
+
     current_time = time.time()
     cpu_temp = (psutil.sensors_temperatures())['coretemp'][0].current
 
     data = {
-        "current_timestamp": current_time,
+        "timestamp": current_time,
         "cpu_temp": cpu_temp,
-        #Fridge 1
-        #Freezer 1
-        #Freezer 2
+        "fridge_1": cpu_temp,
+        "freezer_1": cpu_temp,
+        "freezer_2": cpu_temp,
     }
 
     return json.dumps(data)
@@ -41,7 +54,7 @@ def create_json_string():
 def connect_mqtt(username, password, broker, port, topic):
     client_id = f"publish-{username}-{random.randint(0, 100)}"
 
-    client = mqtt.Client(client_id=client_id, callback_api_version=CallbackAPIVersion.VERSION2)
+    client = mqtt.Client(client_id = client_id, callback_api_version = CallbackAPIVersion.VERSION2)
 
     client.username_pw_set(username, password)
     client.connect(broker, port)
@@ -65,12 +78,9 @@ def control_loop(client, ping_seconds, topic):
             ping_count += 1
             time.sleep(ping_seconds)
     except KeyboardInterrupt:
-        cleanup(client)
-
-def cleanup(client):
-    disconnect_mqtt(client)
-    print("Exiting application")
-    return
+        disconnect_mqtt(client)
+        print("Exiting application")
+        return
 
 def main():
     config = get_config()
@@ -90,4 +100,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    #create_json_string()
