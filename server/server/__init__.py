@@ -6,12 +6,13 @@ import time
 from dotenv import load_dotenv
 from paho.mqtt import client as mqtt_client
 
-FREEZER_TEMP_MAX_C: int = -18
-FREEZER_TEMP_MIN_C: int = -29
-FRIDGE_TEMP_MAX_C: int = 4
+CPU_TEMP_MAX_C: int = 100
+FREEZER_TEMP_MAX_C: int = -18 * 1000
+FREEZER_TEMP_MIN_C: int = -29 * 1000
+FRIDGE_TEMP_MAX_C: int = 4 * 1000
 FRIDGE_TEMP_MIN_C: int = 0
 
-last_data: dict = {}
+last_data = None
 device_online = False
 
 def get_config():
@@ -31,34 +32,63 @@ def get_config():
         print(f"Something went wrong with your environment. Please make sure you have every environment variable set properly.\n{err}")
         return None
 
-def handle_message(message):
-    '''
+def print_fahrenheit(celsius_x_1000):
+    celsius = celsius_x_1000 / 1000
+    fahrenheit = (celsius * 1.8) + 32
+    return round(fahrenheit, 2)
+
+
+def handle_message_new():
+    message = """{"device_id": "Garage Pi", "timestamp": 1730581827.1256046, "sensors": {"cpu_temp": 30.0, "fridge_1": -18657, "freezer_1": -23875, "freezer_2": -22874}}"""
+
+    data = json.loads(message)
+
+    for sensor, value in data['sensors'].items():
+        match sensor:
+            case "cpu_temp":
+                if value > CPU_TEMP_MAX_C:
+                    print(f"CPU is too hot({value} C)")
+            case sensor if "fridge" in sensor:
+                if value > FREEZER_TEMP_MAX_C:
+                    print(f"{sensor} is too hot ({print_fahrenheit(value)} F)")
+                if value < FREEZER_TEMP_MIN_C:
+                    print(f"{sensor} is too cold ({print_fahrenheit(value)} F)")
+            case sensor if "freezer" in sensor:
+                if value > FREEZER_TEMP_MAX_C:
+                    print(f"{sensor} is too hot ({print_fahrenheit(value)} F)")
+                if value < FREEZER_TEMP_MIN_C:
+                    print(f"{sensor} is too cold ({print_fahrenheit(value)} F)")
+
+def handle_message(message: str):
+    """
     json structure should be modified here to fit your needs in accordance with your client.
     I recommend putting yours below for easy reference in the future.
 
     {
+      "device_id": #device_id,
       "timestamp": #current timestamp,
-      "cpu_temp": #cpu temp in C,
-      "fridge_1": #fridge temp in C,
-      "freezer_1": #freezer temp in C,
-      "freezer_2": #freezer temp in C,
+      "sensors": #{sensor data}
     }
-    '''
+    """
 
     global last_data
     global device_online
 
-    print(message)
     data = json.loads(message)
 
-    if bool(last_data):
+    if last_data is None:
         last_data = data
         device_online = True
         print("First sighting")
+        print("Current Data:",data)
     else:
         #time_diff_between_pings = time.time() - last_data['timestamp']
         #print(f"There was {time_diff_between_pings} seconds between pings.")
-        print(last_data)
+        print("hey I've seen you before")
+        print("Current Data:", data)
+        print("Last Data:   ", last_data)
+        # do some work
+        last_data = data
 
 def device_check_online(self, wait_minutes):
     wait_seconds = wait_minutes * 60
@@ -107,8 +137,15 @@ def main():
 
     client = connect_mqtt(username, password, broker, port)
     subscribe(client, topic)
-    client.loop_forever()
+    try:
+        client.loop_forever()
+    except KeyboardInterrupt:
+        print("Disconnecting...")
+        client.disconnect()
+        print("Exiting application")
+        return
 
 
 if __name__ == '__main__':
-    main()
+    #main()
+    handle_message_new()
