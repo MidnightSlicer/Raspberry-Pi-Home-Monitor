@@ -6,7 +6,7 @@ authors = ["Dylan <dylan@mnsr.win>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "^3.11"
 paho-mqtt = "^2.1.0"
 python-dotenv = "^1.0.1"
 psutil = "^6.1.0"
