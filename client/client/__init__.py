@@ -44,7 +44,6 @@ def get_sensors():
             this_sensor = sensor.split(':')
             sensor_macs[this_sensor[0]] = this_sensor[1]
 
-        print(sensor_macs)
         return sensor_macs
     except Exception as err:
         print("Something went wrong with your environment.")
@@ -68,8 +67,9 @@ def create_json_string(device_id):
         sensor_temps = {}
 
         for sensor, value in sensor_macs.items():
-            with open(f'/sys/bus/w1/devices/{value}', 'r') as f:
-                sensor_temps[sensor] = f.read().strip()
+            with open(f'/sys/bus/w1/devices/{value}/w1_slave', 'r') as f:
+                readout = (f.read().strip()).split('t=')
+                sensor_temps[sensor] = readout[1]
 
         # sensor_temps = {
         #     "fridge_1": -18657,
@@ -89,8 +89,6 @@ def create_json_string(device_id):
 
         for sensor, value in sensor_temps.items():
             data['sensors'].update({sensor: value})
-
-        print(data)
 
         return json.dumps(data)
     except Exception as err:
