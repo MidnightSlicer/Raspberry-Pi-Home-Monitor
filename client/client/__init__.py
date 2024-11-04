@@ -2,7 +2,7 @@ import time
 import os
 import random
 import json
-import psutil
+
 from dotenv import load_dotenv
 from paho.mqtt import client as mqtt
 from paho.mqtt.enums import CallbackAPIVersion
@@ -37,12 +37,14 @@ def get_sensors():
     load_dotenv()
 
     try:
-        sensor_macs = []
+        sensor_macs = {}
         sensor_string = os.getenv('SENSOR_MACS')
 
         for sensor in sensor_string.split(','):
-            sensor_macs.append(sensor)
+            this_sensor = sensor.split(':')
+            sensor_macs[this_sensor[0]] = this_sensor[1]
 
+        print(sensor_macs)
         return sensor_macs
     except Exception as err:
         print("Something went wrong with your environment.")
@@ -63,11 +65,17 @@ def create_json_string(device_id):
             cpu_temp = f.read().strip()
 
         sensor_macs = get_sensors()
-        sensor_temps = []
+        sensor_temps = {}
 
-        for sensor in sensor_macs:
-            with open(f'/sys/bus/w1/devices/{sensor}', 'r') as f:
-                sensor_temps.append(f.read().strip())
+        for sensor, value in sensor_macs.items():
+            with open(f'/sys/bus/w1/devices/{value}', 'r') as f:
+                sensor_temps[sensor] = f.read().strip()
+
+        # sensor_temps = {
+        #     "fridge_1": -18657,
+        #     "freezer_1": -23875,
+        #     "freezer_2": -22874
+        # }
 
         current_time = time.time()
 
@@ -76,15 +84,18 @@ def create_json_string(device_id):
             "timestamp": current_time,
             "sensors": {
                 "cpu_temp": cpu_temp,
-                "fridge_1": cpu_temp,
-                "freezer_1": cpu_temp,
-                "freezer_2": cpu_temp
             }
         }
+
+        for sensor, value in sensor_temps.items():
+            data['sensors'].update({sensor: value})
+
+        print(data)
+
+        return json.dumps(data)
     except Exception as err:
         print(f"Something went wrong.\n{err}")
-
-    return json.dumps(data)
+        return None
 
 def connect_mqtt(username, password, broker, port, topic):
     client_id = f"publish-{username}-{random.randint(0, 100)}"
@@ -109,9 +120,16 @@ def control_loop(client, ping_seconds, topic, device_id):
     ping_count = 1
     try:
         while True:
-            send_message(client, topic, create_json_string(device_id))
-            ping_count += 1
-            time.sleep(ping_seconds)
+            json_string = create_json_string(device_id)
+            if json_string is None:
+                print("json_string failed. This likely means one of your sensors is not configured properly. "
+                      "Exiting application.")
+                disconnect_mqtt(client)
+                return
+            else:
+                send_message(client, topic, json_string)
+                ping_count += 1
+                time.sleep(ping_seconds)
     except KeyboardInterrupt:
         disconnect_mqtt(client)
         print("Exiting application")
@@ -135,5 +153,4 @@ def main():
     control_loop(client, ping_seconds, topic, device_id)
 
 if __name__ == "__main__":
-    #main()
-    get_sensors()
+    main()
