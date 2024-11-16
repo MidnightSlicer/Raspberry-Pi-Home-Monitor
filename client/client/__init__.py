@@ -67,9 +67,14 @@ def create_json_string(device_id):
         sensor_temps = {}
 
         for sensor, value in sensor_macs.items():
-            with open(f'/sys/bus/w1/devices/{value}/w1_slave', 'r') as f:
-                readout = (f.read().strip()).split('t=')
-                sensor_temps[sensor] = readout[1]
+            try:
+                with open(f'/sys/bus/w1/devices/{value}/w1_slave', 'r') as f:
+                    readout = (f.read().strip()).split('t=')
+                    sensor_temps[sensor] = readout[1]
+            except FileNotFoundError:
+                sensor_temps[sensor] = "Sensor Error"
+            except Exception as err:
+                sensor_temps[sensor] = f"Unknown Sensor Error: {err}"
 
         # sensor_temps = {
         #     "fridge_1": -18657,
