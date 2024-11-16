@@ -152,8 +152,15 @@ def main():
         print("There is an error in the configuration. Exiting.")
         return
 
-    client = connect_mqtt(username, password, broker, port, topic)
-    control_loop(client, ping_seconds, topic, device_id)
+    try:
+        client = connect_mqtt(username, password, broker, port, topic)
+        control_loop(client, ping_seconds, topic, device_id)
+    except Exception as err:
+        print(f"Something went wrong. {err}")
+
+        time.sleep(10)
+        client = connect_mqtt(username, password, broker, port, topic)
+        control_loop(client, ping_seconds, topic, device_id)
 
 if __name__ == "__main__":
     main()
