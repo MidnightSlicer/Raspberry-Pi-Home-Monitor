@@ -24,6 +24,9 @@ c_topic = ""
 c_wait_minutes = 0
 c_webhook_url = ""
 c_webhook_auth = ""
+c_webhook_id = ""
+
+most_recent_ping = ""
 
 multiprocess_timer = None
 device_online = Value('b', False)
@@ -37,6 +40,7 @@ def get_config():
     global c_wait_minutes
     global c_webhook_url
     global c_webhook_auth
+    global c_webhook_id
 
     load_dotenv()
     try:
@@ -49,6 +53,7 @@ def get_config():
             os.getenv('MQTT_WAIT_MINUTES'),
             os.getenv('MATRIX_WEBHOOK_URL'),
             os.getenv('MATRIX_WEBHOOK_AUTH'),
+            os.getenv('MATRIX_WEBHOOK_DEVICE_ID'),
         ]
 
         if configs is not None:
@@ -60,6 +65,7 @@ def get_config():
             c_wait_minutes = configs[5]
             c_webhook_url = configs[6]
             c_webhook_auth = configs[7]
+            c_webhook_id = configs[8]
         else:
             raise Exception("Configuration not found")
 
@@ -114,55 +120,74 @@ def handle_message(message: str):
       "sensors": #{sensor data}
     }
     """
-
-    global multiprocess_timer
-
+    global most_recent_ping
     data = json.loads(message)
-    matrix_message: str = ""
-    timestamp = datetime.datetime.fromtimestamp(data['timestamp'])
-    human_readable_time = timestamp.strftime('%m/%d/%Y %l:%M:%S %p')
+    most_recent_ping = data
 
-    print(f"\nDevice temps at {human_readable_time}")
-    for sensor, value in data['sensors'].items():
-        sensor_l = sensor.lower()
+    if data.get("device_id") == c_webhook_id:
+        if len(most_recent_ping) < 1:
+            matrix_message = "The device has not pinged since the server started."
+        else:
+            timestamp = datetime.datetime.fromtimestamp(most_recent_ping['timestamp'])
+            human_readable_time = timestamp.strftime('%m/%d/%Y %l:%M:%S %p')
+            matrix_message = f"The device last pinged at {human_readable_time} with the following data:\n\n"
+            for sensor, value in most_recent_ping.items():
+                try:
+                    value = int(value) / 1000
 
-        try:
-            value = int(value) / 1000
-            match sensor:
-                case "cpu_temp":
-                    if value > CPU_TEMP_MAX_C:
-                        matrix_message += f"\nCPU is too hot({value} C)"
-                case sensor_l if "fridge" in sensor:
-                    if value > FREEZER_TEMP_MAX_C:
-                        matrix_message += f"\n{sensor} is too hot ({print_fahrenheit(value)} F)"
-                    if value < FREEZER_TEMP_MIN_C:
-                        matrix_message += f"\n{sensor} is too cold ({print_fahrenheit(value)} F)"
-                case sensor_l if "freezer" in sensor:
-                    if value > FREEZER_TEMP_MAX_C:
-                        matrix_message += f"\n{sensor} is too hot ({print_fahrenheit(value)} F)"
-                    if value < FREEZER_TEMP_MIN_C:
-                        matrix_message += f"\n{sensor} is too cold ({print_fahrenheit(value)} F)"
+                    matrix_message += f"{sensor}: {print_fahrenheit(value)} F ({value} C)\n"
+                except ValueError:
+                    matrix_message += f"{sensor}: {value}\n"
 
-            print(f"{sensor} is {value} C ({print_fahrenheit(value)} F)")
-        except ValueError:
-            matrix_message += f"\nThere is an error with {sensor}"
-
-    if matrix_message:
-        print("Sending message to Matrix")
-        matrix_message = f"Report from {c_username} at {human_readable_time}{matrix_message}"
         send_message(c_webhook_url, c_webhook_auth, matrix_message)
+    else:
+        global multiprocess_timer
 
-    if not device_online.value:
-        with device_online.get_lock():
-            device_online.value = True
-        print(f"{c_username} is online!")
-        send_message(c_webhook_url, c_webhook_auth, f"{c_username} is online!")
+        matrix_message: str = ""
+        timestamp = datetime.datetime.fromtimestamp(data['timestamp'])
+        human_readable_time = timestamp.strftime('%m/%d/%Y %l:%M:%S %p')
 
-    if multiprocess_timer:
-        multiprocess_timer.terminate()
+        print(f"\nDevice temps at {human_readable_time}")
+        for sensor, value in data['sensors'].items():
+            sensor_l = sensor.lower()
 
-    multiprocess_timer = Process(target=device_alive_timer)
-    multiprocess_timer.start()
+            try:
+                value = int(value) / 1000
+                match sensor:
+                    case "cpu_temp":
+                        if value > CPU_TEMP_MAX_C:
+                            matrix_message += f"\nCPU is too hot({value} C)"
+                    case sensor_l if "fridge" in sensor:
+                        if value > FREEZER_TEMP_MAX_C:
+                            matrix_message += f"\n{sensor} is too hot ({print_fahrenheit(value)} F)"
+                        if value < FREEZER_TEMP_MIN_C:
+                            matrix_message += f"\n{sensor} is too cold ({print_fahrenheit(value)} F)"
+                    case sensor_l if "freezer" in sensor:
+                        if value > FREEZER_TEMP_MAX_C:
+                            matrix_message += f"\n{sensor} is too hot ({print_fahrenheit(value)} F)"
+                        if value < FREEZER_TEMP_MIN_C:
+                            matrix_message += f"\n{sensor} is too cold ({print_fahrenheit(value)} F)"
+
+                print(f"{sensor} is {value} C ({print_fahrenheit(value)} F)")
+            except ValueError:
+                matrix_message += f"\nThere is an error with {sensor}"
+
+        if matrix_message:
+            print("Sending message to Matrix")
+            matrix_message = f"Report from {c_username} at {human_readable_time}{matrix_message}"
+            send_message(c_webhook_url, c_webhook_auth, matrix_message)
+
+        if not device_online.value:
+            with device_online.get_lock():
+                device_online.value = True
+            print(f"{c_username} is online!")
+            send_message(c_webhook_url, c_webhook_auth, f"{c_username} is online!")
+
+        if multiprocess_timer:
+            multiprocess_timer.terminate()
+
+        multiprocess_timer = Process(target=device_alive_timer)
+        multiprocess_timer.start()
 
 def connect_mqtt(username, password, broker, port) -> mqtt_client:
     def on_connect(self, client, userdata, flags, rc):
